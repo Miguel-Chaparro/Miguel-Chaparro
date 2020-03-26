@@ -176,7 +176,7 @@ public class NohaServices implements Runnable {
                     puerto_ser.setSerialPortParams(
                             baudRate,
                             SerialPort.DATABITS_8,
-                            SerialPort.STOPBITS_1,
+                            SerialPort.STOPBITS_2,
                             SerialPort.PARITY_NONE);
                     puerto_ser.setDTR(true);
                     out = puerto_ser.getOutputStream();
