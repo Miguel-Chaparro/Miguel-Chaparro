@@ -180,16 +180,16 @@ public class NohaServices implements Runnable {
                             SerialPort.PARITY_NONE);
                     puerto_ser.setDTR(true);
                     out = puerto_ser.getOutputStream();
-                    System.out.print(out);
+                    //System.out.print(out);
                     in = puerto_ser.getInputStream();
                     long start = System.currentTimeMillis();
                     long end = start + 5000;
                     for (;;) {
-                        in = puerto_ser.getInputStream();
-                        salida = in.read(buffer, 0, buffer.length);
-                        salida2 = in.read();
+                        //in = puerto_ser.getInputStream();
                         
-                        System.out.println(salida);
+                        salida = in.read(buffer, 0, buffer.length);
+                        
+                        //System.out.println(salida);
                         //System.out.println(salida2);
                         if (end <= System.currentTimeMillis()) {
                             puerto_ser.close();
@@ -197,11 +197,11 @@ public class NohaServices implements Runnable {
                          
                         }
 
-                        lectura = new String(buffer);
+                        lectura = lectura + new String(buffer).trim();
                         
-                        Double datoDouble = Double.valueOf(salida);
-                        System.out.println((char)salida2);
-                        //System.out.println(salida);
+                        //Double datoDouble = Double.valueOf(salida);
+                        //System.out.println((char)salida2);
+                        System.out.println(salida);
 
                     }
                     break;
