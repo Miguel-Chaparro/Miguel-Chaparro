@@ -156,14 +156,15 @@ public class NohaServices implements Runnable {
     }
 
     private String getDataSerialCom() {
-        byte[] buffer = new byte[1024];
+        //byte[] buffer = new byte[1024];
         SerialPort puerto_ser = null;
-        OutputStream out = null;
+        int inicio = 0, fin = 0;
+        //OutputStream out = null;
         InputStream in = null;
         CommPortIdentifier port = null;
         Enumeration puertos_libres = null;
         int salida = 0;
-        int salida2 = 0;
+        //int salida2 = 0;
         String lectura = "";
         try {
             puertos_libres = CommPortIdentifier.getPortIdentifiers();
@@ -171,48 +172,62 @@ public class NohaServices implements Runnable {
 
                 port = (CommPortIdentifier) puertos_libres.nextElement();
                 if (port.getName().equals("COM7")) {
-                    puerto_ser = (SerialPort) port.open("Noha Services", 20000);
+                    puerto_ser = (SerialPort) port.open("Noha Services", 2000);
                     int baudRate = 9600;
                     puerto_ser.setSerialPortParams(
                             baudRate,
                             SerialPort.DATABITS_8,
-                            SerialPort.STOPBITS_2,
+                            SerialPort.STOPBITS_1,
                             SerialPort.PARITY_NONE);
                     puerto_ser.setDTR(true);
-                    out = puerto_ser.getOutputStream();
+                    //out = puerto_ser.getOutputStream();
                     //System.out.print(out);
                     in = puerto_ser.getInputStream();
                     long start = System.currentTimeMillis();
                     long end = start + 5000;
+                    char prueba;
                     for (;;) {
                         //in = puerto_ser.getInputStream();
-                        
-                        salida = in.read(buffer, 0, buffer.length);
-                        
+
+                        //salida = in.read(buffer, 0, buffer.length);
+                        salida = in.read();
+
                         //System.out.println(salida);
                         //System.out.println(salida2);
-                        if (end <= System.currentTimeMillis()) {
+                        /*if (end <= System.currentTimeMillis()) {
+                        sg: wt, + 0.000, kg 
+                        
+                        }*/
+                        prueba = (char) salida;
+                        //lectura = lectura + new String(buffer).trim();
+
+                        lectura = lectura + prueba;
+                        inicio = lectura.indexOf("+");
+                        fin = lectura.indexOf("Kg");
+
+                        if (inicio != -1 && fin != -1 && inicio > fin) {
+                            lectura = lectura.replace("Kg", "");
+                        }
+                        if (inicio != -1 && fin != -1 && inicio < fin) {
                             puerto_ser.close();
                             break;
-                         
                         }
 
-                        lectura = lectura + new String(buffer).trim();
-                        
                         //Double datoDouble = Double.valueOf(salida);
                         //System.out.println((char)salida2);
-                        System.out.println(salida);
+                        //System.out.println(lectura);
 
                     }
                     break;
                 }
+
             }
         } catch (IOException | PortInUseException | UnsupportedCommOperationException e) {
             lectura = e.getMessage();
             System.out.print(e);
 
         }
-        return lectura;
+        return lectura.substring(inicio + 1, fin + 2);
     }
 
     private String getConfigCom() {
@@ -239,4 +254,5 @@ public class NohaServices implements Runnable {
         }
         return listado;
     }
+
 }
