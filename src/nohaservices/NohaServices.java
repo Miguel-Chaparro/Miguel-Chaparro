@@ -5,7 +5,9 @@
  */
 package nohaservices;
 
+import gnu.io.CommPort;
 import gnu.io.CommPortIdentifier;
+import gnu.io.NoSuchPortException;
 import gnu.io.PortInUseException;
 import gnu.io.SerialPort;
 import gnu.io.UnsupportedCommOperationException;
@@ -16,15 +18,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.ServerSocket;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.Enumeration;
 import java.util.List;
-import java.util.StringTokenizer;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import javax.print.PrintService;
 import javax.print.PrintServiceLookup;
 
@@ -35,11 +34,17 @@ import javax.print.PrintServiceLookup;
 public class NohaServices implements Runnable {
 
     static final int PORT = 14285;
-    static final String COMC = "COM1";
+    static final String HTTP_200 = "HTTP/1.1 200 OK";
+    static final String HTTP_417 = "HTTP/1.1 417 Expectation Failed";
+    static final String HTTP_404 = "HTTP/1.1 404 Not Found";
+    static final String HTTP_405 = "HTTP/1.1 405 Method Not Allowed";
+    static final String HTTP_500 = "HTTP/1.1 500 Internal Server Error";
+    static final String HTTP_SERVER = "Server: Java HTTP Server from Noha: 1.0";
+    static final String HTTP_CONTENT = "Content-type: application/json";
     private final Socket connect;
 
-    //private final SerialPort sp;
     public NohaServices(Socket con) {
+        super();
         connect = con;
     }
 
@@ -49,13 +54,10 @@ public class NohaServices implements Runnable {
     public static void main(String[] args) {
         try {
             ServerSocket serverSocket = new ServerSocket(PORT);
-
             while (true) {
                 NohaServices server = new NohaServices(serverSocket.accept());
-
                 Thread thread = new Thread(server);
                 thread.start();
-
             }
         } catch (IOException e) {
             System.err.println(e);
@@ -70,189 +72,279 @@ public class NohaServices implements Runnable {
         PrintWriter out = null;
         BufferedOutputStream dataOut = null;
         String fileRequested = null;
-        String prueba = "";
-        byte[] data = new byte[prueba.length()];
         try {
             in = new BufferedReader(new InputStreamReader(connect.getInputStream()));
             out = new PrintWriter(connect.getOutputStream());
             dataOut = new BufferedOutputStream(connect.getOutputStream());
+            CodeValue response = new CodeValue();
             String input = in.readLine();
-            StringTokenizer parse = new StringTokenizer(input);
-            String method = parse.nextToken().toUpperCase();
-            fileRequested = parse.nextToken();
-            System.out.println(method);
-            System.out.println(fileRequested);
+            String[] parse = input.split("/");
+            String method = parse[0].toUpperCase().trim();
+            fileRequested = parse[1];
             String[] getMethod;
             getMethod = fileRequested.split("\\?");
-            System.out.print(getMethod[0].replace("/", ""));
-
             if (!method.equals("GET") && !method.equals("HEAD")) {
-                httpHeaders(out, dataOut, "", true);
+                response.setCodigo(HTTP_405);
+                response.setValor("Metodo No Soportado");
             } else {
-                String dataPort = "";
                 switch (getMethod.length) {
                     case 2:
-                        dataPort = validateMethodResource(getMethod[0].replace("/", ""), getMethod[1]);
+                        response = validateMethodResource(getMethod[0].replace("/", ""), getMethod[1]);
                         break;
                     case 1:
-                        dataPort = validateMethodResource(getMethod[0].replace("/", ""), "");
+                        response = validateMethodResource(getMethod[0].replace("/", ""), "");
                         break;
                     default:
-                        dataPort = validateMethodResource("", "");
+                        response = validateMethodResource("", "");
                         break;
                 }
-
-                // getDataSerialCom();
-                httpHeaders(out, dataOut, dataPort, false);
             }
+            httpHeaders(out, dataOut, response);
         } catch (IOException e) {
 
         } finally {
             try {
-                in.close();
-                out.close();
-                dataOut.close();
                 connect.close();
             } catch (IOException e) {
                 System.err.println("Error close : " + e.getMessage());
             }
-        } //To change body of generated methods, choose Tools | Templates.
+        }
     }
 
-    public void httpHeaders(PrintWriter out, BufferedOutputStream dataOut, String dataPort, boolean isError) throws IOException {
-        if (isError) {
-            out.println("HTTP/1.1 501 Not Implemented");
-            dataPort = "Metodo no soportado, valide nuevamente o contacte al administrador";
-        } else {
-            out.println("HTTP/1.1 200 OK");
-        }
-        out.println("Server: Java HTTP Server from Noha: 1.0");
+    public void httpHeaders(PrintWriter out, BufferedOutputStream dataOut, CodeValue response) throws IOException {
+
+        String jsonResponse;
+        jsonResponse = "{\"value\": \"" + response.getValor().trim() + "\"}";
+        int longData = jsonResponse.length();
+        out.println(response.getCodigo());
+        out.println("Access-Control-Allow-Origin: *");
+        out.println("Access-Control-Allow-Methods: POST, GET, OPTIONS");
+        out.println("Access-Control-Expose-Headers: X-My-Custom-Header, X-Another-Custom-Header");
+        out.println("Access-Control-Allow-Headers: X-PINGOTHER");
+        out.println(HTTP_SERVER);
         out.println("Date: " + new Date());
-        out.println("Content-type: application/json");
-        out.println("Content-length: " + dataPort.length());
+        out.println(HTTP_CONTENT);
+        out.println("Content-length: " + longData);
         out.println();
         out.flush();
-        dataOut.flush();
-        dataOut.write(dataPort.getBytes(), 0, dataPort.length());
+        dataOut.write(jsonResponse.getBytes(), 0, longData);
+        dataOut.close();
+        out.close();
         dataOut.flush();
     }
 
-    private String validateMethodResource(String resource, String parameters) {
+    private CodeValue validateMethodResource(String resource, String parameters) {
+        CodeValue metodoResponse = new CodeValue();
 
-        switch (resource) {
+        if (parameters == null) {
+            parameters = "";
+        } else {
+            parameters = parameters.replace("HTTP", "").trim();
+        }
+
+        switch (resource.replace("HTTP", "").trim()) {
             case "getValueBascula":
-                return getDataSerialCom();
+                return getDataSerialCom(parameters);
             case "getConfigCom":
                 return getConfigCom();
             case "getPrints":
                 return printsList();
             case "print":
-                return "Metodo Print";
+                metodoResponse.setCodigo(HTTP_200);
+                metodoResponse.setValor("Metodo de Impresion Pruebas");
+                return metodoResponse;
+            case "getValueBasculaPrueba":
+                return prueba();
             default:
-                return "Error 404";
-
+                metodoResponse.setCodigo(HTTP_404);
+                metodoResponse.setValor("Peticion no soportada 404");
+                return metodoResponse;
         }
 
     }
 
-    private String getDataSerialCom() {
-        //byte[] buffer = new byte[1024];
+    private CodeValue prueba() {
+        CodeValue response = new CodeValue();
+        response.setCodigo(HTTP_200);
+        response.setValor("0.000, Kg");
+        return response;
+    }
+
+    private CodeValue getDataSerialCom(String fuente) {
+        CodeValue response = new CodeValue();
+        atributos_bascula esquema = getParamBascula(fuente);
         SerialPort puerto_ser = null;
         int inicio = 0, fin = 0;
-        //OutputStream out = null;
         InputStream in = null;
         CommPortIdentifier port = null;
-        Enumeration puertos_libres = null;
+        CommPort commPort = null;
         int salida = 0;
-        //int salida2 = 0;
         String lectura = "";
+        String lecturaTimeOut = "No fue posible obtener datos en el rango de tiempo estimado";
+        String codigoTimeOut = HTTP_417;
+        long start = System.currentTimeMillis();
         try {
-            puertos_libres = CommPortIdentifier.getPortIdentifiers();
-            while (puertos_libres.hasMoreElements()) {
+            port = CommPortIdentifier.getPortIdentifier(esquema.getPort().trim());
+            if (port.isCurrentlyOwned()) {
+                response.setCodigo(HTTP_417);
+                response.setValor("Puerto en uso, por favor intente mas tarde");
 
-                port = (CommPortIdentifier) puertos_libres.nextElement();
-                if (port.getName().equals("COM7")) {
-                    puerto_ser = (SerialPort) port.open("Noha Services", 2000);
-                    int baudRate = 9600;
-                    puerto_ser.setSerialPortParams(
-                            baudRate,
-                            SerialPort.DATABITS_8,
-                            SerialPort.STOPBITS_1,
-                            SerialPort.PARITY_NONE);
-                    puerto_ser.setDTR(true);
-                    //out = puerto_ser.getOutputStream();
-                    //System.out.print(out);
-                    in = puerto_ser.getInputStream();
-                    long start = System.currentTimeMillis();
-                    long end = start + 5000;
-                    char prueba;
-                    for (;;) {
-                        //in = puerto_ser.getInputStream();
-
-                        //salida = in.read(buffer, 0, buffer.length);
-                        salida = in.read();
-
-                        //System.out.println(salida);
-                        //System.out.println(salida2);
-                        /*if (end <= System.currentTimeMillis()) {
-                        sg: wt, + 0.000, kg 
-                        
-                        }*/
-                        prueba = (char) salida;
-                        //lectura = lectura + new String(buffer).trim();
-
-                        lectura = lectura + prueba;
-                        inicio = lectura.indexOf("+");
-                        fin = lectura.indexOf("Kg");
-
-                        if (inicio != -1 && fin != -1 && inicio > fin) {
-                            lectura = lectura.replace("Kg", "");
-                        }
-                        if (inicio != -1 && fin != -1 && inicio < fin) {
+            } else {
+                commPort = port.open(this.getClass().getName(), 2000);
+                puerto_ser = (SerialPort) commPort;
+                int baudRate = 9600;
+                puerto_ser.setSerialPortParams(
+                        baudRate,
+                        SerialPort.DATABITS_8,
+                        SerialPort.STOPBITS_1,
+                        SerialPort.PARITY_NONE);
+                in = puerto_ser.getInputStream();
+                char prueba;
+                while (true) {
+                    salida = in.read();
+                    prueba = (char) salida;
+                    lectura = lectura + prueba;
+                    inicio = lectura.indexOf("+");
+                    fin = lectura.indexOf("Kg");
+                    if (esquema.getTime() > 0) {
+                        long end = start + esquema.getTime();
+                        if (end <= System.currentTimeMillis()) {
+                            response.setCodigo(codigoTimeOut);
+                            response.setValor(lecturaTimeOut);
                             puerto_ser.close();
                             break;
                         }
-
-                        //Double datoDouble = Double.valueOf(salida);
-                        //System.out.println((char)salida2);
-                        //System.out.println(lectura);
-
+                        if (inicio > fin) {
+                            lectura = "";
+                        } else if (inicio != -1 && fin != -1 && inicio < fin) {
+                            codigoTimeOut = HTTP_200;
+                            lecturaTimeOut = lectura.substring(inicio + 1, fin + 2);
+                            lectura = "";
+                        }
+                    } else {
+                        long end = start + 10000;
+                        if (end <= System.currentTimeMillis()) {
+                            response.setCodigo(codigoTimeOut);
+                            response.setValor(lectura);
+                            puerto_ser.close();
+                            break;
+                        }
+                        if (inicio > fin) {
+                            lectura = lectura.replace("Kg", "");
+                        } else if (inicio != -1 && fin != -1 && inicio < fin) {
+                            response.setCodigo(HTTP_200);
+                            response.setValor(lectura.substring(inicio + 1, fin + 2));
+                            puerto_ser.close();
+                            break;
+                        }
                     }
-                    break;
                 }
-
             }
-        } catch (IOException | PortInUseException | UnsupportedCommOperationException e) {
-            lectura = e.getMessage();
-            System.out.print(e);
-
+        } catch (IOException | PortInUseException | NoSuchPortException | UnsupportedCommOperationException e) {
+            response.setCodigo(HTTP_500);
+            response.setValor("Error al intentar conectarse al puerto: " + esquema.getPort());
         }
-        return lectura.substring(inicio + 1, fin + 2);
+        //return lectura.substring(inicio + 1, fin + 2);
+        return response;
     }
 
-    private String getConfigCom() {
+    private CodeValue getConfigCom() {
+        CodeValue response = new CodeValue();
+
         Enumeration puertos_libres = null;
         CommPortIdentifier port = null;
         puertos_libres = CommPortIdentifier.getPortIdentifiers();
-        String aux = "";
+        String puertosLibres = "";
+        int count = 0;
         while (puertos_libres.hasMoreElements()) {
             port = (CommPortIdentifier) puertos_libres.nextElement();
-            int type = port.getPortType();
-            aux = aux + " " + type + ":" + port.getName();
-
+            count++;
+            puertosLibres = puertosLibres + " " + count + ":" + port.getName();
         }
-
-        return aux;
+        if (puertosLibres.length() > 0) {
+            response.setCodigo(HTTP_200);
+            response.setValor(puertosLibres);
+        } else {
+            response.setCodigo(HTTP_417);
+            response.setValor("No hay dispositivos Conectados");
+        }
+        return response;
 
     }
 
-    private String printsList() {
+    private CodeValue printsList() {
+        CodeValue response = new CodeValue();
         String listado = "";
         PrintService[] ps = PrintServiceLookup.lookupPrintServices(null, null);
         for (PrintService p : ps) {
             listado = listado + "' - '" + p.getName();
         }
-        return listado;
+        if (listado.length() > 0) {
+            response.setCodigo(HTTP_200);
+            response.setValor(listado);
+        } else {
+            response.setCodigo(HTTP_417);
+            response.setValor("No hay dispositivos Conectados");
+        }
+        return response;
+    }
+
+    private atributos_bascula getParamBascula(String Resource) {
+        atributos_bascula atributos;
+        atributos = new atributos_bascula("COM7", 0, false);
+        List<CodeValue> splitParam = getParam(Resource);
+        for (CodeValue codigoValor : splitParam) {
+            switch (codigoValor.getCodigo()) {
+                case "puerto":
+                    atributos.setPort(codigoValor.getValor());
+                    break;
+                case "TimeOut":
+                    int time;
+                    try {
+                        time = Integer.parseInt(codigoValor.getValor());
+                    } catch (NumberFormatException e) {
+                        time = 0;
+                    }
+                    atributos.setTime(time);
+                    break;
+                case "second":
+                    boolean segundo = false;
+                    try {
+                        segundo = Boolean.parseBoolean(codigoValor.getValor());
+                    } catch (Exception e) {
+                        segundo = false;
+                    }
+                    atributos.setSecond(segundo);
+                    break;
+                default:
+                    break;
+            }
+        }
+        if (atributos.isSecond()) {
+            atributos.setTime(atributos.getTime() * 1000);
+        }
+        return atributos;
+    }
+
+    private List<CodeValue> getParam(String parametros) {
+        CodeValue codigoValor;
+        List<CodeValue> listaCodigoValor;
+        listaCodigoValor = new ArrayList();
+        String[] paramPrinc;
+
+        paramPrinc = parametros.split("&");
+
+        for (String paramPrinc1 : paramPrinc) {
+            codigoValor = new CodeValue();
+            String[] cod;
+            cod = paramPrinc1.split("=");
+            if (cod.length > 1) {
+                codigoValor.setCodigo(cod[0]);
+                codigoValor.setValor(cod[1]);
+                listaCodigoValor.add(codigoValor);
+            }
+        }
+        return listaCodigoValor;
     }
 
 }
