@@ -14,6 +14,7 @@ import gnu.io.UnsupportedCommOperationException;
 
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.ServerSocket;
@@ -24,8 +25,18 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import javax.print.Doc;
+import javax.print.DocFlavor;
+import javax.print.DocPrintJob;
+import javax.print.PrintException;
 import javax.print.PrintService;
 import javax.print.PrintServiceLookup;
+import javax.print.SimpleDoc;
+import javax.print.attribute.HashPrintRequestAttributeSet;
+import javax.print.attribute.PrintRequestAttributeSet;
+import javax.print.attribute.standard.Copies;
 
 /**
  *
@@ -33,7 +44,7 @@ import javax.print.PrintServiceLookup;
  */
 public class NohaServices implements Runnable {
 
-    static final int PORT = 14285;
+    static final int PORT = 5656;
     static final String HTTP_200 = "HTTP/1.1 200 OK";
     static final String HTTP_417 = "HTTP/1.1 417 Expectation Failed";
     static final String HTTP_404 = "HTTP/1.1 404 Not Found";
@@ -114,13 +125,11 @@ public class NohaServices implements Runnable {
     public void httpHeaders(PrintWriter out, BufferedOutputStream dataOut, CodeValue response) throws IOException {
 
         String jsonResponse;
-        jsonResponse = "{\"value\": \"" + response.getValor().trim() + "\"}";
+        jsonResponse = "{\"peso\":\"" + response.getValor().trim() + "\"}";
         int longData = jsonResponse.length();
         out.println(response.getCodigo());
         out.println("Access-Control-Allow-Origin: *");
         out.println("Access-Control-Allow-Methods: POST, GET, OPTIONS");
-        out.println("Access-Control-Expose-Headers: X-My-Custom-Header, X-Another-Custom-Header");
-        out.println("Access-Control-Allow-Headers: X-PINGOTHER");
         out.println(HTTP_SERVER);
         out.println("Date: " + new Date());
         out.println(HTTP_CONTENT);
@@ -150,9 +159,7 @@ public class NohaServices implements Runnable {
             case "getPrints":
                 return printsList();
             case "print":
-                metodoResponse.setCodigo(HTTP_200);
-                metodoResponse.setValor("Metodo de Impresion Pruebas");
-                return metodoResponse;
+                return printerToPrint(getParamPrinters(parameters.replaceAll("%20", " ")));
             case "getValueBasculaPrueba":
                 return prueba();
             default:
@@ -166,7 +173,7 @@ public class NohaServices implements Runnable {
     private CodeValue prueba() {
         CodeValue response = new CodeValue();
         response.setCodigo(HTTP_200);
-        response.setValor("0.000, Kg");
+        response.setValor("3.980,   Kg");
         return response;
     }
 
@@ -204,7 +211,7 @@ public class NohaServices implements Runnable {
                     salida = in.read();
                     prueba = (char) salida;
                     lectura = lectura + prueba;
-                    inicio = lectura.indexOf("+");
+                    inicio = lectura.indexOf(".");
                     fin = lectura.indexOf("Kg");
                     if (esquema.getTime() > 0) {
                         long end = start + esquema.getTime();
@@ -219,6 +226,7 @@ public class NohaServices implements Runnable {
                         } else if (inicio != -1 && fin != -1 && inicio < fin) {
                             codigoTimeOut = HTTP_200;
                             lecturaTimeOut = lectura.substring(inicio + 1, fin + 2);
+                            in = puerto_ser.getInputStream();
                             lectura = "";
                         }
                     } else {
@@ -289,6 +297,53 @@ public class NohaServices implements Runnable {
         return response;
     }
 
+    private CodeValue printerToPrint(modelPrinter Atributos) {
+
+        CodeValue response = new CodeValue();
+
+        PrintService[] ps = PrintServiceLookup.lookupPrintServices(null, null);
+        PrintService service = null;
+        InputStream is = new ByteArrayInputStream("  ".getBytes());
+        for (PrintService p : ps) {
+            if (Atributos.getImpresora().equals(p.getName())) {
+                service = p;
+                break;
+            }
+        }
+        if (service != null) {
+            PrintRequestAttributeSet pras = new HashPrintRequestAttributeSet();
+            pras.add(new Copies(1));
+            DocFlavor flavor = DocFlavor.INPUT_STREAM.AUTOSENSE;
+            Doc doc = new SimpleDoc(is, flavor, null);
+            DocPrintJob job = service.createPrintJob();
+            PrintJobWatcher pjw = new PrintJobWatcher(job);
+            try {
+                job.print(doc, pras);
+                response.setCodigo(HTTP_200);
+                response.setValor("OK");
+
+            } catch (PrintException ex) {
+                Logger.getLogger(NohaServices.class.getName()).log(Level.SEVERE, null, ex);
+                response.setCodigo(HTTP_417);
+                response.setValor("Se presento error al Imprimir: " + ex);
+            }
+            pjw.waitForDone();
+            try {
+                is.close();
+            } catch (IOException ex) {
+                Logger.getLogger(NohaServices.class.getName()).log(Level.SEVERE, null, ex);
+                response.setCodigo(HTTP_417);
+                response.setValor("Se presento error al cerrar Documento: " + ex);
+            }
+        } else {
+            response.setCodigo(HTTP_417);
+            response.setValor("No se reconoce la impresora: " + Atributos.getImpresora());
+        }
+
+        return response;
+
+    }
+
     private atributos_bascula getParamBascula(String Resource) {
         atributos_bascula atributos;
         atributos = new atributos_bascula("COM7", 0, false);
@@ -323,6 +378,24 @@ public class NohaServices implements Runnable {
         if (atributos.isSecond()) {
             atributos.setTime(atributos.getTime() * 1000);
         }
+        return atributos;
+    }
+
+    private modelPrinter getParamPrinters(String Resource) {
+        modelPrinter atributos;
+        atributos = new modelPrinter();
+        List<CodeValue> splitParam = getParam(Resource);
+        for (CodeValue codigoValor : splitParam) {
+            switch (codigoValor.getCodigo()) {
+                case "printer":
+                    atributos.setImpresora(codigoValor.getValor());
+                    break;
+
+                default:
+                    break;
+            }
+        }
+
         return atributos;
     }
 
