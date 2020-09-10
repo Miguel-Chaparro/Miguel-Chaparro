@@ -204,7 +204,7 @@ public class NohaServices implements Runnable {
                     salida = in.read();
                     prueba = (char) salida;
                     lectura = lectura + prueba;
-                    inicio = lectura.indexOf("+");
+                    inicio = lectura.indexOf(".") -3;
                     fin = lectura.indexOf("Kg");
                     if (esquema.getTime() > 0) {
                         long end = start + esquema.getTime();
@@ -216,7 +216,7 @@ public class NohaServices implements Runnable {
                         }
                         if (inicio > fin) {
                             lectura = "";
-                        } else if (inicio != -1 && fin != -1 && inicio < fin) {
+                        } else if (inicio > 0 && fin != -1 && inicio < fin) {
                             codigoTimeOut = HTTP_200;
                             lecturaTimeOut = lectura.substring(inicio + 1, fin + 2);
                             lectura = "";
@@ -231,7 +231,7 @@ public class NohaServices implements Runnable {
                         }
                         if (inicio > fin) {
                             lectura = lectura.replace("Kg", "");
-                        } else if (inicio != -1 && fin != -1 && inicio < fin) {
+                        } else if (inicio > 0 && fin != -1 && inicio < fin) {
                             response.setCodigo(HTTP_200);
                             response.setValor(lectura.substring(inicio + 1, fin + 2));
                             puerto_ser.close();
