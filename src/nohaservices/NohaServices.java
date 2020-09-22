@@ -11,10 +11,10 @@ import gnu.io.NoSuchPortException;
 import gnu.io.PortInUseException;
 import gnu.io.SerialPort;
 import gnu.io.UnsupportedCommOperationException;
+import java.awt.print.PrinterException;
 
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.ServerSocket;
@@ -27,16 +27,9 @@ import java.util.Enumeration;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.print.Doc;
-import javax.print.DocFlavor;
-import javax.print.DocPrintJob;
-import javax.print.PrintException;
 import javax.print.PrintService;
 import javax.print.PrintServiceLookup;
-import javax.print.SimpleDoc;
-import javax.print.attribute.HashPrintRequestAttributeSet;
-import javax.print.attribute.PrintRequestAttributeSet;
-import javax.print.attribute.standard.Copies;
+import printer.printBox;
 
 /**
  *
@@ -94,10 +87,12 @@ public class NohaServices implements Runnable {
             fileRequested = parse[1];
             String[] getMethod;
             getMethod = fileRequested.split("\\?");
-            if (!method.equals("GET") && !method.equals("HEAD")) {
+            if (!method.equals("GET") && !method.equals("HEAD")&&!method.equals("POST")) {
                 response.setCodigo(HTTP_405);
                 response.setValor("Metodo No Soportado");
-            } else {
+            } else if(method.equals("POST")){
+                System.out.print(in.read());
+            }else {
                 switch (getMethod.length) {
                     case 2:
                         response = validateMethodResource(getMethod[0].replace("/", ""), getMethod[1]);
@@ -211,37 +206,41 @@ public class NohaServices implements Runnable {
                     salida = in.read();
                     prueba = (char) salida;
                     lectura = lectura + prueba;
-                    inicio = lectura.indexOf(".");
-                    fin = lectura.indexOf("Kg");
+                    inicio = lectura.indexOf(".") - 3;
+                    fin = lectura.toLowerCase().indexOf("kg");
+
                     if (esquema.getTime() > 0) {
                         long end = start + esquema.getTime();
                         if (end <= System.currentTimeMillis()) {
                             response.setCodigo(codigoTimeOut);
                             response.setValor(lecturaTimeOut);
+                            lectura = "";
                             puerto_ser.close();
                             break;
                         }
                         if (inicio > fin) {
                             lectura = "";
-                        } else if (inicio != -1 && fin != -1 && inicio < fin) {
+                        } else if (inicio >= 0 && fin != -1 && inicio < fin) {
                             codigoTimeOut = HTTP_200;
                             lecturaTimeOut = lectura.substring(inicio + 1, fin + 2);
                             in = puerto_ser.getInputStream();
                             lectura = "";
                         }
                     } else {
-                        long end = start + 10000;
+                        long end = start + 1000;
                         if (end <= System.currentTimeMillis()) {
                             response.setCodigo(codigoTimeOut);
                             response.setValor(lectura);
+                            lectura = "";
                             puerto_ser.close();
                             break;
                         }
                         if (inicio > fin) {
-                            lectura = lectura.replace("Kg", "");
-                        } else if (inicio != -1 && fin != -1 && inicio < fin) {
+                            lectura = lectura.toLowerCase().replace("kg", "").trim();
+                        } else if (inicio >= 0 && fin != -1 && inicio < fin) {
                             response.setCodigo(HTTP_200);
                             response.setValor(lectura.substring(inicio + 1, fin + 2));
+                            lectura = "";
                             puerto_ser.close();
                             break;
                         }
@@ -300,53 +299,22 @@ public class NohaServices implements Runnable {
     private CodeValue printerToPrint(modelPrinter Atributos) {
 
         CodeValue response = new CodeValue();
-
-        PrintService[] ps = PrintServiceLookup.lookupPrintServices(null, null);
-        PrintService service = null;
-        InputStream is = new ByteArrayInputStream("  ".getBytes());
-        for (PrintService p : ps) {
-            if (Atributos.getImpresora().equals(p.getName())) {
-                service = p;
-                break;
-            }
+        printBox printer = new printBox();
+        try {
+            printer.printString(Atributos.getImpresora(), " \"\\n\\n testing testing 1 2 3eeeee \\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\"");
+        } catch (PrinterException ex) {
+            Logger.getLogger(NohaServices.class.getName()).log(Level.SEVERE, null, ex);
         }
-        if (service != null) {
-            PrintRequestAttributeSet pras = new HashPrintRequestAttributeSet();
-            pras.add(new Copies(1));
-            DocFlavor flavor = DocFlavor.INPUT_STREAM.AUTOSENSE;
-            Doc doc = new SimpleDoc(is, flavor, null);
-            DocPrintJob job = service.createPrintJob();
-            PrintJobWatcher pjw = new PrintJobWatcher(job);
-            try {
-                job.print(doc, pras);
-                response.setCodigo(HTTP_200);
-                response.setValor("OK");
-
-            } catch (PrintException ex) {
-                Logger.getLogger(NohaServices.class.getName()).log(Level.SEVERE, null, ex);
-                response.setCodigo(HTTP_417);
-                response.setValor("Se presento error al Imprimir: " + ex);
-            }
-            pjw.waitForDone();
-            try {
-                is.close();
-            } catch (IOException ex) {
-                Logger.getLogger(NohaServices.class.getName()).log(Level.SEVERE, null, ex);
-                response.setCodigo(HTTP_417);
-                response.setValor("Se presento error al cerrar Documento: " + ex);
-            }
-        } else {
-            response.setCodigo(HTTP_417);
-            response.setValor("No se reconoce la impresora: " + Atributos.getImpresora());
-        }
-
+        response.setCodigo(HTTP_200);
+        response.setValor("OK");
+      
         return response;
 
     }
 
     private atributos_bascula getParamBascula(String Resource) {
         atributos_bascula atributos;
-        atributos = new atributos_bascula("COM7", 0, false);
+        atributos = new atributos_bascula("COM3", 0, false);
         List<CodeValue> splitParam = getParam(Resource);
         for (CodeValue codigoValor : splitParam) {
             switch (codigoValor.getCodigo()) {
