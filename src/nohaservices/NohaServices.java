@@ -12,7 +12,7 @@ import gnu.io.PortInUseException;
 import gnu.io.SerialPort;
 import gnu.io.UnsupportedCommOperationException;
 import java.awt.print.PrinterException;
-
+import java.net.URLDecoder;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -20,7 +20,9 @@ import java.io.InputStream;
 import java.net.ServerSocket;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.io.UnsupportedEncodingException;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.Enumeration;
@@ -29,6 +31,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.print.PrintService;
 import javax.print.PrintServiceLookup;
+import printer.htmlToPdf;
 import printer.printBox;
 
 /**
@@ -82,17 +85,20 @@ public class NohaServices implements Runnable {
             dataOut = new BufferedOutputStream(connect.getOutputStream());
             CodeValue response = new CodeValue();
             String input = in.readLine();
-            String[] parse = input.split("/");
-            String method = parse[0].toUpperCase().trim();
-            fileRequested = parse[1];
+            int indicador = input.indexOf("/");
+            String method = input.substring(0, indicador-1);
+            String result = input.substring(indicador+1);
+            int indicProtocol = result.indexOf("HTTP/");
+            String protocolo = result.substring(indicProtocol);
+            fileRequested = URLDecoder.decode(result.substring(0,indicProtocol-1), StandardCharsets.UTF_8.name());
             String[] getMethod;
             getMethod = fileRequested.split("\\?");
-            if (!method.equals("GET") && !method.equals("HEAD")&&!method.equals("POST")) {
+            if (!method.equals("GET") && !method.equals("HEAD") && !method.equals("POST")) {
                 response.setCodigo(HTTP_405);
                 response.setValor("Metodo No Soportado");
-            } else if(method.equals("POST")){
+            } else if (method.equals("POST")) {
                 System.out.print(in.read());
-            }else {
+            } else {
                 switch (getMethod.length) {
                     case 2:
                         response = validateMethodResource(getMethod[0].replace("/", ""), getMethod[1]);
@@ -154,6 +160,9 @@ public class NohaServices implements Runnable {
             case "getPrints":
                 return printsList();
             case "print":
+                 
+                return printerToHTML(getParamPrinters(parameters.replaceAll("%20", " ")));
+            case "openDrawer":
                 return printerToPrint(getParamPrinters(parameters.replaceAll("%20", " ")));
             case "getValueBasculaPrueba":
                 return prueba();
@@ -307,7 +316,28 @@ public class NohaServices implements Runnable {
         }
         response.setCodigo(HTTP_200);
         response.setValor("OK");
-      
+
+        return response;
+
+    }
+
+    private CodeValue printerToHTML(modelPrinter Atributos) {
+
+        CodeValue response = new CodeValue();
+        printBox printer = new printBox();
+        htmlToPdf pdf = new htmlToPdf();
+
+        boolean state = pdf.convertHtmlToPDF(Atributos.getHtml(), "factura.pdf");
+        try {
+            printer.printDocument(Atributos.getImpresora(), "factura.pdf");
+        } catch (PrinterException ex) {
+            System.err.print(ex);
+        } catch (IOException ex) {
+            System.err.print(ex);
+        }
+        response.setCodigo(HTTP_200);
+        response.setValor("OK");
+
         return response;
 
     }
@@ -358,7 +388,9 @@ public class NohaServices implements Runnable {
                 case "printer":
                     atributos.setImpresora(codigoValor.getValor());
                     break;
-
+                case "html":
+                    atributos.setHtml(codigoValor.getValor());
+                    break;
                 default:
                     break;
             }

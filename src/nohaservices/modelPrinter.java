@@ -11,6 +11,15 @@ package nohaservices;
  */
 public class modelPrinter {
     private String impresora;
+    private String html;
+
+    public String getHtml() {
+        return html;
+    }
+
+    public void setHtml(String html) {
+        this.html = html;
+    }
 
     public String getImpresora() {
         return impresora;
