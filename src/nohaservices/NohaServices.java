@@ -5,6 +5,7 @@
  */
 package nohaservices;
 
+import com.google.gson.Gson;
 import gnu.io.CommPort;
 import gnu.io.CommPortIdentifier;
 import gnu.io.NoSuchPortException;
@@ -20,7 +21,6 @@ import java.io.InputStream;
 import java.net.ServerSocket;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
-import java.io.UnsupportedEncodingException;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -33,6 +33,10 @@ import javax.print.PrintService;
 import javax.print.PrintServiceLookup;
 import printer.htmlToPdf;
 import printer.printBox;
+import response.getPrintersResponse;
+import response.printResponse;
+import response.printers;
+import response.scaleResponse;
 
 /**
  *
@@ -86,11 +90,11 @@ public class NohaServices implements Runnable {
             CodeValue response = new CodeValue();
             String input = in.readLine();
             int indicador = input.indexOf("/");
-            String method = input.substring(0, indicador-1);
-            String result = input.substring(indicador+1);
+            String method = input.substring(0, indicador - 1);
+            String result = input.substring(indicador + 1);
             int indicProtocol = result.indexOf("HTTP/");
             String protocolo = result.substring(indicProtocol);
-            fileRequested = URLDecoder.decode(result.substring(0,indicProtocol-1), StandardCharsets.UTF_8.name());
+            fileRequested = URLDecoder.decode(result.substring(0, indicProtocol - 1), StandardCharsets.UTF_8.name());
             String[] getMethod;
             getMethod = fileRequested.split("\\?");
             if (!method.equals("GET") && !method.equals("HEAD") && !method.equals("POST")) {
@@ -125,9 +129,7 @@ public class NohaServices implements Runnable {
 
     public void httpHeaders(PrintWriter out, BufferedOutputStream dataOut, CodeValue response) throws IOException {
 
-        String jsonResponse;
-        jsonResponse = "{\"peso\":\"" + response.getValor().trim() + "\"}";
-        int longData = jsonResponse.length();
+        int longData = response.getValor().trim().length();
         out.println(response.getCodigo());
         out.println("Access-Control-Allow-Origin: *");
         out.println("Access-Control-Allow-Methods: POST, GET, OPTIONS");
@@ -137,7 +139,7 @@ public class NohaServices implements Runnable {
         out.println("Content-length: " + longData);
         out.println();
         out.flush();
-        dataOut.write(jsonResponse.getBytes(), 0, longData);
+        dataOut.write(response.getValor().trim().getBytes(), 0, longData);
         dataOut.close();
         out.close();
         dataOut.flush();
@@ -153,18 +155,18 @@ public class NohaServices implements Runnable {
         }
 
         switch (resource.replace("HTTP", "").trim()) {
-            case "getValueBascula":
+            case "getScale":
+                // return prueba();
                 return getDataSerialCom(parameters);
             case "getConfigCom":
                 return getConfigCom();
-            case "getPrints":
+            case "getPrinters":
                 return printsList();
             case "print":
-                 
                 return printerToHTML(getParamPrinters(parameters.replaceAll("%20", " ")));
             case "openDrawer":
                 return printerToPrint(getParamPrinters(parameters.replaceAll("%20", " ")));
-            case "getValueBasculaPrueba":
+            case "getScalePrueba":
                 return prueba();
             default:
                 metodoResponse.setCodigo(HTTP_404);
@@ -176,13 +178,20 @@ public class NohaServices implements Runnable {
 
     private CodeValue prueba() {
         CodeValue response = new CodeValue();
+        scaleResponse scaleValue = new scaleResponse();
+        scaleValue.setWeight("3.980,   Kg");
+        Gson gson = new Gson();
+        String json = gson.toJson(scaleValue);
         response.setCodigo(HTTP_200);
-        response.setValor("3.980,   Kg");
+        response.setValor(json);
+
         return response;
     }
 
     private CodeValue getDataSerialCom(String fuente) {
         CodeValue response = new CodeValue();
+        Gson gson = new Gson();
+        scaleResponse scaleValue = new scaleResponse();
         atributos_bascula esquema = getParamBascula(fuente);
         SerialPort puerto_ser = null;
         int inicio = 0, fin = 0;
@@ -247,8 +256,10 @@ public class NohaServices implements Runnable {
                         if (inicio > fin) {
                             lectura = lectura.toLowerCase().replace("kg", "").trim();
                         } else if (inicio >= 0 && fin != -1 && inicio < fin) {
+                            scaleValue.setWeight(lectura.substring(inicio + 1, fin + 2));
+                            String json = gson.toJson(scaleValue);
                             response.setCodigo(HTTP_200);
-                            response.setValor(lectura.substring(inicio + 1, fin + 2));
+                            response.setValor(json);
                             lectura = "";
                             puerto_ser.close();
                             break;
@@ -290,14 +301,33 @@ public class NohaServices implements Runnable {
 
     private CodeValue printsList() {
         CodeValue response = new CodeValue();
-        String listado = "";
+        int listado = 0;
+        Gson gson = new Gson();
+
+        getPrintersResponse responseList = new getPrintersResponse();
+        List<printers> listPrints = new ArrayList();
+
         PrintService[] ps = PrintServiceLookup.lookupPrintServices(null, null);
         for (PrintService p : ps) {
-            listado = listado + "' - '" + p.getName();
+            listado++;
+            printers printData = new printers();
+            printData.setPrinterName(p.getName());
+            printData.setPrintNumber(listado);
+            listPrints.add(printData);
         }
-        if (listado.length() > 0) {
+        //Ejemplo default
+       /* for (int i = 0; i <= 3; i++) {
+            listado++;
+            printers printData = new printers();
+            printData.setPrinterName("Impresora " + i);
+            printData.setPrintNumber(i);
+            listPrints.add(printData);
+        }*/
+
+        if (listado > 0) {
             response.setCodigo(HTTP_200);
-            response.setValor(listado);
+            String json = gson.toJson(listPrints);
+            response.setValor(json);
         } else {
             response.setCodigo(HTTP_417);
             response.setValor("No hay dispositivos Conectados");
@@ -306,16 +336,26 @@ public class NohaServices implements Runnable {
     }
 
     private CodeValue printerToPrint(modelPrinter Atributos) {
-
+        Gson gson = new Gson();
+        String json;
         CodeValue response = new CodeValue();
         printBox printer = new printBox();
+        printResponse pResponse = new printResponse();
         try {
-            printer.printString(Atributos.getImpresora(), " \"\\n\\n testing testing 1 2 3eeeee \\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\"");
+            printer.printString(Atributos.getImpresora(), "");
+            pResponse.setState(true);
+            pResponse.setMessage("OK");
+            json = gson.toJson(pResponse);
+            response.setCodigo(HTTP_200);
+            response.setValor(json);
         } catch (PrinterException ex) {
             Logger.getLogger(NohaServices.class.getName()).log(Level.SEVERE, null, ex);
+            pResponse.setState(false);
+            pResponse.setMessage(ex.getMessage());
+            json = gson.toJson(pResponse);
+            response.setCodigo(HTTP_417);
+            response.setValor(json);
         }
-        response.setCodigo(HTTP_200);
-        response.setValor("OK");
 
         return response;
 

@@ -3,9 +3,12 @@
     <editor-bookmarks xmlns="http://www.netbeans.org/ns/editor-bookmarks/2" lastBookmarkId="0"/>
     <open-files xmlns="http://www.netbeans.org/ns/projectui-open-files/2">
         <group>
-            <file>file:/C:/Users/MIGUEL/Documents/Proyectos/Steven/Noha/NohaServices/src/printer/printBox.java</file>
-            <file>file:/C:/Users/MIGUEL/Documents/Proyectos/Steven/Noha/NohaServices/src/nohaservices/PrintJobWatcher.java</file>
-            <file>file:/C:/Users/MIGUEL/Documents/Proyectos/Steven/Noha/NohaServices/src/nohaservices/NohaServices.java</file>
+            <file>file:/C:/Users/MIGUEL/Documents/Proyectos/Steven/Noha/DeviceServices/src/response/printers.java</file>
+            <file>file:/C:/Users/MIGUEL/Documents/Proyectos/Steven/Noha/DeviceServices/src/response/scaleResponse.java</file>
+            <file>file:/C:/Users/MIGUEL/Documents/Proyectos/Steven/Noha/DeviceServices/src/nohaservices/modelPrinter.java</file>
+            <file>file:/C:/Users/MIGUEL/Documents/Proyectos/Steven/Noha/DeviceServices/src/nohaservices/NohaServices.java</file>
+            <file>file:/C:/Users/MIGUEL/Documents/Proyectos/Steven/Noha/DeviceServices/src/response/printResponse.java</file>
+            <file>file:/C:/Users/MIGUEL/Documents/Proyectos/Steven/Noha/DeviceServices/src/response/getPrintersResponse.java</file>
         </group>
     </open-files>
 </project-private>
